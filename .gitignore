@@ -1,0 +1,5 @@
+
+.env
+aienv/
+__pycache__/
+
