@@ -50,9 +50,17 @@
     </div>
 
     <script>
+
+        // Generate a random session ID when the page loads
+        const sessionId = Math.random().toString(36).substring(2, 15);
+        console.log("Session ID:", sessionId); 
+
         async function runAgent() {
             const query = document.getElementById('queryInput').value;
             if (!query) return;
+
+            // Clear input box so user can type the next question
+            document.getElementById('queryInput').value = '';
 
             // Update UI state
             document.getElementById('loading').classList.remove('hidden');
@@ -63,7 +71,7 @@
                 const response = await fetch('/api/research', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: query })
+                    body: JSON.stringify({ query: query, thread_id: sessionId })
                 });
                 
                 const data = await response.json();

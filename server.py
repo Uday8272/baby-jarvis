@@ -1,4 +1,5 @@
 
+import uuid
 from fastapi import FastAPI 
 from fastapi.responses import HTMLResponse 
 from pydantic import BaseModel 
@@ -10,22 +11,23 @@ app = FastAPI(title="jarvis")
 # define the structure of the data we expect from the frontend 
 class query_request(BaseModel): 
     query: str 
+    thread_id: str 
     
 # 1. the api endpoint: this is where the frontend sends the user's question 
 @app.post("/api/research") 
 async def run_research(request: query_request):
     
-    initial_state = {
-        "messages": [], 
-        "user_query": request.query, 
-        "search_count": 0,
-        "research_data": [], 
-        "is_verified": False, 
-        "final_output": ''
+    config = {"configurable": {"thread_id": request.thread_id}}
+    
+    input_state = {
+        'user_query': request.query, 
+        'search_count': 0, 
+        'is_verified': False
     } 
     
+    
     # run your multu-agent pipeline 
-    result = agent_app.invoke(initial_state) 
+    result = agent_app.invoke(input_state, config=config) 
     
     # return only the beautifully formatted markdown from the writer agent 
     return {"result": result["final_output"]} 

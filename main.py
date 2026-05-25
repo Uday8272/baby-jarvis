@@ -7,6 +7,7 @@ from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage 
 from tavily import TavilyClient 
+from langgraph.checkpoint.memory import MemorySaver 
 
 # load the api keys from .env file securely 
 load_dotenv() 
@@ -47,18 +48,17 @@ def intake_agent(state: agent_state):
                 "Keep it concise."
     ) 
     
-    # pass the user's original query from out state 
-    user_message = HumanMessage(content=state["user_query"]) 
+    # # We grab the past memory (if any) and append the brand new question 
+    past_messages = state.get("messages", []) 
+    current_message = HumanMessage(content=state["user_query"]) 
     
-    # call the llm to generate the plan 
-    response = llm.invoke([system_prompt, user_message]) 
+    # We feed the System Persona + Past Memory + New Question to the LLM 
+    messages_to_send = [system_prompt] + past_messages + [current_message] 
+    
+    response = llm.invoke(messages_to_send) 
     print(f"plan generated : {response.content}") 
     
-    # save the llm's response to our shared short -term memory 
-    return {"messages": [response]}
-    
-    # logic to process intent will go here 
-    return {"messages": ["intake complete"]} 
+    return {"messages": [current_message, response]}
 
 # agent2 --> research agent =======================================================================
 def researcher_agent(state: agent_state): 
@@ -205,8 +205,11 @@ workflow.add_conditional_edges(
 
 workflow.add_edge('writer', END) 
 
-# compile the graph into an executable application 
-app = workflow.compile() 
+# memory checkpointer 
+memory = MemorySaver() 
+
+# compile the graph with memory 
+app = workflow.compile(checkpointer=memory) 
 
 # 4. test the skeleton ------------------ 
 
