@@ -7,7 +7,7 @@ from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage 
 from tavily import TavilyClient 
-from langgraph.checkpoint.memory import MemorySaver 
+
 
 # load the api keys from .env file securely 
 load_dotenv() 
@@ -156,7 +156,7 @@ def writer_agent(state: agent_state):
     
     # print the final result beautifully in the terminal 
     print("\n" + "="*60)
-    print("🎉 FINAL VERIFIED ANSWER:")
+    print("FINAL VERIFIED ANSWER:")
     print("="*60)
     print(response.content)
     print("="*60 + "\n")
@@ -205,15 +205,18 @@ workflow.add_conditional_edges(
 
 workflow.add_edge('writer', END) 
 
-# memory checkpointer 
-memory = MemorySaver() 
+# NOTE: workflow is exported uncompiled.
+# server.py compiles it with the async Postgres checkpointer at startup.
 
-# compile the graph with memory 
-app = workflow.compile(checkpointer=memory) 
 
 # 4. test the skeleton ------------------ 
 
 if __name__ == "__main__": 
+    from langgraph.checkpoint.memory import MemorySaver 
+    
+    # for standalone testing, compile with in-memory checkpointer 
+    test_app = workflow.compile(checkpointer=MemorySaver()) 
+    
     initial_state = {
         'messages': [], 
         'user_query': 'what are the latest breakthroughs in solid-state batteries??', 
@@ -225,6 +228,6 @@ if __name__ == "__main__":
     
     print('--- starting multi-agent pipeline ---') 
     
-    app.invoke(initial_state) 
+    test_app.invoke(initial_state) 
     
     

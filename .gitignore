@@ -1,5 +1,9 @@
-
-.env
-aienv/
+.venv/
 __pycache__/
+*.pyc
+.env
+logs/
+screenshots/
+.cursor/
+.env.example/ 
 

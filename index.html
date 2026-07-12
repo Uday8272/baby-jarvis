@@ -1,91 +1,719 @@
-
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Baby Jarvis</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>JARVIS — System Control AI</title>
+    <meta name="description" content="JARVIS AI assistant with full PC system control — shell commands, file management, app control, and more.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        /* Custom styling to make the Markdown output look beautiful */
-        .prose h1 { font-size: 1.5rem; font-weight: bold; margin-bottom: 1rem; color: #f3f4f6; }
-        .prose h3 { font-size: 1.17rem; font-weight: bold; margin-top: 1.5rem; margin-bottom: 0.5rem; color: #9ca3af; }
-        .prose p { margin-bottom: 1rem; line-height: 1.6; }
-        .prose ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
-        .prose li { margin-bottom: 0.25rem; }
-        .prose strong { color: #f9fafb; }
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a2e;
+            --bg-card: #16162a;
+            --text-primary: #e4e4ef;
+            --text-secondary: #8888a8;
+            --text-muted: #55556a;
+            --accent-blue: #4f8fff;
+            --accent-cyan: #06d6a0;
+            --accent-purple: #7c5cfc;
+            --accent-orange: #ff6b35;
+            --accent-red: #ef4444;
+            --border: #2a2a3e;
+            --glow-blue: rgba(79, 143, 255, 0.15);
+            --glow-cyan: rgba(6, 214, 160, 0.12);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Header ─────────────────────────────────── */
+        .header {
+            padding: 1.25rem 2rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+        }
+
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .header-logo {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: #fff;
+            box-shadow: 0 0 20px var(--glow-blue);
+        }
+
+        .header-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-cyan);
+            box-shadow: 0 0 8px var(--accent-cyan);
+            animation: pulse-dot 2s infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* ── Voice Buttons ──────────────────────────── */
+        .voice-toggle {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 0.4rem 0.8rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: all 0.2s;
+        }
+        .voice-toggle:hover {
+            color: var(--text-primary);
+            border-color: var(--accent-blue);
+        }
+        .voice-toggle.active {
+            color: var(--accent-cyan);
+            border-color: var(--accent-cyan);
+            background: rgba(6, 214, 160, 0.1);
+        }
+
+        .mic-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0 0.8rem;
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .mic-btn:hover { color: var(--text-primary); }
+        .mic-btn.listening {
+            color: var(--accent-red);
+            animation: pulse-mic 1.5s infinite;
+        }
+        @keyframes pulse-mic {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+            100% { transform: scale(1); }
+        }
+
+        /* ── Chat Container ─────────────────────────── */
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            max-width: 900px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        /* ── Message Bubbles ────────────────────────── */
+        .message {
+            display: flex;
+            gap: 0.75rem;
+            animation: fadeSlideUp 0.3s ease-out;
+        }
+
+        @keyframes fadeSlideUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user { flex-direction: row-reverse; }
+
+        .message-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .message.jarvis .message-avatar {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            box-shadow: 0 0 12px var(--glow-blue);
+        }
+
+        .message.user .message-avatar {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+        }
+
+        .message-bubble {
+            max-width: 75%;
+            padding: 0.9rem 1.15rem;
+            border-radius: 14px;
+            line-height: 1.6;
+            font-size: 0.9rem;
+        }
+
+        .message.jarvis .message-bubble {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-top-left-radius: 4px;
+        }
+
+        .message.user .message-bubble {
+            background: linear-gradient(135deg, #1e3a5f, #1a2e4a);
+            border: 1px solid #2a4a6e;
+            border-top-right-radius: 4px;
+        }
+
+        /* ── Tool Execution Badge ───────────────────── */
+        .tool-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.3rem 0.65rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            background: rgba(79, 143, 255, 0.1);
+            border: 1px solid rgba(79, 143, 255, 0.2);
+            color: var(--accent-blue);
+        }
+
+        .tool-badge.success {
+            background: rgba(6, 214, 160, 0.1);
+            border-color: rgba(6, 214, 160, 0.2);
+            color: var(--accent-cyan);
+        }
+
+        .tool-badge .spinner {
+            width: 12px;
+            height: 12px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Markdown Prose ─────────────────────────── */
+        .prose h1 { font-size: 1.3rem; font-weight: 700; margin: 1rem 0 0.5rem; color: var(--text-primary); }
+        .prose h2 { font-size: 1.15rem; font-weight: 600; margin: 0.9rem 0 0.4rem; color: var(--text-primary); }
+        .prose h3 { font-size: 1rem; font-weight: 600; margin: 0.8rem 0 0.3rem; color: var(--text-secondary); }
+        .prose p { margin-bottom: 0.75rem; }
+        .prose ul, .prose ol { padding-left: 1.5rem; margin-bottom: 0.75rem; }
+        .prose li { margin-bottom: 0.2rem; }
+        .prose strong { color: #fff; }
+        .prose code {
+            background: var(--bg-tertiary);
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            font-family: 'Cascadia Code', 'JetBrains Mono', monospace;
+            color: var(--accent-cyan);
+        }
+        .prose pre {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.85rem 1rem;
+            overflow-x: auto;
+            margin: 0.75rem 0;
+        }
+        .prose pre code {
+            background: none;
+            padding: 0;
+            color: var(--text-primary);
+        }
+        .prose a { color: var(--accent-blue); text-decoration: none; }
+        .prose a:hover { text-decoration: underline; }
+
+        /* ── Thinking Indicator ─────────────────────── */
+        .thinking {
+            display: flex;
+            gap: 0.75rem;
+            animation: fadeSlideUp 0.3s ease-out;
+        }
+
+        .thinking-dots {
+            display: flex;
+            gap: 4px;
+            padding: 1rem 1.15rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            border-top-left-radius: 4px;
+        }
+
+        .thinking-dots span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+            animation: bounce 1.4s infinite;
+        }
+
+        .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: translateY(0); opacity: 0.3; }
+            40% { transform: translateY(-6px); opacity: 1; }
+        }
+
+        /* ── Input Bar ──────────────────────────────── */
+        .input-bar {
+            padding: 1rem 2rem 1.5rem;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: center;
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 0.5rem;
+            max-width: 900px;
+            width: 100%;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 0.4rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .input-wrapper:focus-within {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px var(--glow-blue);
+        }
+
+        .input-wrapper input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            padding: 0.6rem 0.8rem;
+        }
+
+        .input-wrapper input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .send-btn {
+            padding: 0.6rem 1.4rem;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+
+        .send-btn:hover { opacity: 0.9; }
+        .send-btn:active { transform: scale(0.97); }
+        .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* ── Welcome Screen ─────────────────────────── */
+        .welcome {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2rem;
+            gap: 1rem;
+        }
+
+        .welcome-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 18px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            box-shadow: 0 0 40px var(--glow-blue), 0 0 80px var(--glow-cyan);
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+
+        .welcome h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .welcome p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            max-width: 450px;
+            line-height: 1.6;
+        }
+
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-top: 0.5rem;
+        }
+
+        .quick-action {
+            padding: 0.5rem 1rem;
+            border-radius: 10px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .quick-action:hover {
+            border-color: var(--accent-blue);
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+        }
+
+        /* ── Scrollbar ──────────────────────────────── */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-8">
+<body>
 
-    <div class="w-full max-w-3xl">
-        <div class="mb-8 text-center">
-            <h1 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 mb-2">
-                Baby Jarvis
-            </h1>
-            <p class="text-gray-400">Not that jarvis from MCU</p>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-brand">
+            <div class="header-logo">J</div>
+            <span class="header-title">JARVIS</span>
         </div>
-
-        <div class="bg-gray-800 p-1 rounded-lg flex shadow-lg border border-gray-700 mb-8">
-            <input type="text" id="queryInput" placeholder="Ask a complex question..." 
-                   class="flex-grow bg-transparent text-white p-3 outline-none placeholder-gray-500">
-            <button onclick="runAgent()" 
-                    class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-md font-semibold transition-colors">
-                Research
-            </button>
+        <div class="header-status">
+            <button class="voice-toggle" id="voiceToggle" onclick="toggleVoice()">🔊 Voice: OFF</button>
+            <div class="status-dot"></div>
+            <span>System Control Active</span>
         </div>
+    </header>
 
-        <div id="loading" class="hidden flex flex-col items-center justify-center text-gray-400 my-12">
-            <svg class="animate-spin h-8 w-8 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <p class="animate-pulse">Baby jarvis is working hardd bruh , have some patience ...</p>
+    <!-- Chat area -->
+    <div class="chat-container" id="chatContainer">
+        <!-- Welcome screen (shown initially) -->
+        <div class="welcome" id="welcomeScreen">
+            <div class="welcome-icon">⚡</div>
+            <h2>JARVIS Online</h2>
+            <p>I have full control over your PC. I can run commands, manage files, open apps, take screenshots, control volume, and much more.</p>
+            <div class="quick-actions">
+                <button class="quick-action" onclick="sendQuick('What\'s my CPU and RAM usage?')">💻 System Stats</button>
+                <button class="quick-action" onclick="sendQuick('Open Notepad')">📝 Open Notepad</button>
+                <button class="quick-action" onclick="sendQuick('List all files on my Desktop')">📁 Desktop Files</button>
+                <button class="quick-action" onclick="sendQuick('Take a screenshot')">📸 Screenshot</button>
+                <button class="quick-action" onclick="sendQuick('What\'s the current volume level?')">🔊 Volume</button>
+                <button class="quick-action" onclick="sendQuick('Search the web for latest AI news')">🌐 Web Search</button>
+            </div>
         </div>
+    </div>
 
-        <div id="outputContainer" class="hidden bg-gray-800 p-6 rounded-lg shadow-xl border border-gray-700">
-            <div id="resultBox" class="prose prose-invert max-w-none text-gray-300"></div>
+    <!-- Input bar -->
+    <div class="input-bar">
+        <div class="input-wrapper">
+            <input type="text" id="queryInput" placeholder="Ask Jarvis anything... (system commands, file ops, web search, etc.)"
+                   autocomplete="off" autofocus>
+            <button class="mic-btn" id="micBtn" onclick="toggleMic()" title="Dictate via Microphone">🎙️</button>
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
         </div>
     </div>
 
     <script>
+        // ── Pre-load voices for TTS ─────────────────────
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.getVoices();
+            window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+        }
 
-        // Generate a random session ID when the page loads
+        // ── State ───────────────────────────────────────
         const sessionId = Math.random().toString(36).substring(2, 15);
-        console.log("Session ID:", sessionId); 
+        let isProcessing = false;
+        let voiceEnabled = false;
+        let recognition = null;
+        let isListening = false;
 
-        async function runAgent() {
-            const query = document.getElementById('queryInput').value;
-            if (!query) return;
+        // ── Voice & Speech Setup ────────────────────────
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
 
-            // Clear input box so user can type the next question
-            document.getElementById('queryInput').value = '';
+            recognition.onstart = () => {
+                isListening = true;
+                const micBtn = document.getElementById('micBtn');
+                micBtn.classList.add('listening');
+                document.getElementById('queryInput').placeholder = "Listening...";
+            };
 
-            // Update UI state
-            document.getElementById('loading').classList.remove('hidden');
-            document.getElementById('outputContainer').classList.add('hidden');
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                document.getElementById('queryInput').value = transcript;
+                sendMessage(); // Auto-send when finished speaking
+            };
+
+            recognition.onerror = (event) => {
+                console.error("Speech recognition error", event.error);
+                stopMic();
+            };
+
+            recognition.onend = () => {
+                stopMic();
+            };
+        } else {
+            // Hide mic button if not supported
+            setTimeout(() => {
+                const micBtn = document.getElementById('micBtn');
+                if(micBtn) micBtn.style.display = 'none';
+            }, 0);
+        }
+
+        function toggleMic() {
+            if (!recognition) return;
+            if (isListening) {
+                recognition.stop();
+            } else {
+                recognition.start();
+            }
+        }
+
+        function stopMic() {
+            isListening = false;
+            const micBtn = document.getElementById('micBtn');
+            if(micBtn) micBtn.classList.remove('listening');
+            document.getElementById('queryInput').placeholder = "Ask Jarvis anything... (system commands, file ops, web search, etc.)";
+        }
+
+        function toggleVoice() {
+            voiceEnabled = !voiceEnabled;
+            const btn = document.getElementById('voiceToggle');
+            if (voiceEnabled) {
+                btn.classList.add('active');
+                btn.textContent = '🔊 Voice: ON';
+            } else {
+                btn.classList.remove('active');
+                btn.textContent = '🔊 Voice: OFF';
+                window.speechSynthesis.cancel(); // Stop speaking if turned off
+            }
+        }
+
+        function stripMarkdown(text) {
+            return text
+                .replace(/(\*\*|__)(.*?)\1/g, '$2') // bold
+                .replace(/(\*|_)(.*?)\1/g, '$2') // italic
+                .replace(/~~(.*?)~~/g, '$1') // strikethrough
+                .replace(/`{1,3}(.*?)`{1,3}/g, '$1') // inline code / block
+                .replace(/\[(.*?)\]\(.*?\)/g, '$1') // links
+                .replace(/#+\s+(.*)/g, '$1') // headers
+                .replace(/>\s+(.*)/g, '$1') // blockquotes
+                .replace(/[-*+]\s+/g, '') // list markers
+                .replace(/\n+/g, ' '); // newlines to spaces
+        }
+
+        function speakText(text) {
+            if (!voiceEnabled || !('speechSynthesis' in window)) return;
+            window.speechSynthesis.cancel(); // stop any ongoing speech
+            
+            const cleanText = stripMarkdown(text);
+            const utterance = new SpeechSynthesisUtterance(cleanText);
+            
+            // Try to use a natural English voice if available
+            const voices = window.speechSynthesis.getVoices();
+            const preferredVoice = voices.find(v => v.name.includes('Google UK English Male') || v.name.includes('Microsoft Mark') || v.name.includes('English'));
+            if (preferredVoice) utterance.voice = preferredVoice;
+
+            utterance.rate = 1.05;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // ── Enter to send ───────────────────────────────
+        document.getElementById('queryInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // ── Quick action buttons ────────────────────────
+        function sendQuick(text) {
+            document.getElementById('queryInput').value = text;
+            sendMessage();
+        }
+
+        // ── Send message ────────────────────────────────
+        async function sendMessage() {
+            const input = document.getElementById('queryInput');
+            const query = input.value.trim();
+            if (!query || isProcessing) return;
+
+            isProcessing = true;
+            input.value = '';
+            document.getElementById('sendBtn').disabled = true;
+
+            // Hide welcome screen
+            const welcome = document.getElementById('welcomeScreen');
+            if (welcome) welcome.remove();
+
+            // Add user message
+            addMessage('user', query);
+
+            // Show thinking indicator
+            const thinkingId = showThinking();
 
             try {
-                // Call our FastAPI server
-                const response = await fetch('/api/research', {
+                const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: query, thread_id: sessionId })
+                    body: JSON.stringify({ query: query, session_id: sessionId })
                 });
-                
+
                 const data = await response.json();
-                
-                // Parse the Markdown and display it
-                document.getElementById('resultBox').innerHTML = marked.parse(data.result);
-                document.getElementById('outputContainer').classList.remove('hidden');
-                
+                removeThinking(thinkingId);
+                addMessage('jarvis', data.result);
+                speakText(data.result);
+
             } catch (error) {
-                document.getElementById('resultBox').innerHTML = `<p class="text-red-400">Error connecting to agent.</p>`;
-                document.getElementById('outputContainer').classList.remove('hidden');
+                removeThinking(thinkingId);
+                addMessage('jarvis', '❌ Connection error — is the server running?');
             } finally {
-                document.getElementById('loading').classList.add('hidden');
+                isProcessing = false;
+                document.getElementById('sendBtn').disabled = false;
+                input.focus();
             }
+        }
+
+        // ── Add message to chat ─────────────────────────
+        function addMessage(role, content) {
+            const container = document.getElementById('chatContainer');
+            const msg = document.createElement('div');
+            msg.className = `message ${role}`;
+
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = role === 'jarvis' ? 'J' : '🧑';
+
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+
+            if (role === 'jarvis') {
+                bubble.innerHTML = '<div class="prose">' + marked.parse(content || '') + '</div>';
+            } else {
+                bubble.textContent = content;
+            }
+
+            msg.appendChild(avatar);
+            msg.appendChild(bubble);
+            container.appendChild(msg);
+
+            // Scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // ── Thinking indicator ──────────────────────────
+        function showThinking() {
+            const container = document.getElementById('chatContainer');
+            const id = 'thinking-' + Date.now();
+
+            const thinking = document.createElement('div');
+            thinking.className = 'thinking';
+            thinking.id = id;
+
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.style.background = 'linear-gradient(135deg, var(--accent-blue), var(--accent-purple))';
+            avatar.style.boxShadow = '0 0 12px var(--glow-blue)';
+            avatar.textContent = 'J';
+
+            const dots = document.createElement('div');
+            dots.className = 'thinking-dots';
+            dots.innerHTML = '<span></span><span></span><span></span>';
+
+            thinking.appendChild(avatar);
+            thinking.appendChild(dots);
+            container.appendChild(thinking);
+            container.scrollTop = container.scrollHeight;
+
+            return id;
+        }
+
+        function removeThinking(id) {
+            const el = document.getElementById(id);
+            if (el) el.remove();
         }
     </script>
 </body>
