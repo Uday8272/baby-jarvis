@@ -27,7 +27,7 @@ def search_local_files(query: str) -> str:
         source file paths, or a message saying no results were found.
     """
     try:
-        from rag_engine import get_vector_store
+        from rag.engine import get_vector_store
 
         vector_store = get_vector_store()
 
@@ -75,7 +75,7 @@ def ingest_local_folder(folder_path: str) -> str:
         return f"Error: '{folder_path}' is not a valid directory."
 
     try:
-        from rag_engine import load_and_chunk_docs, create_or_update_vector_store
+        from rag.engine import load_and_chunk_docs, create_or_update_vector_store, get_vector_store
 
         chunks = load_and_chunk_docs(folder_path)
 

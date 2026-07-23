@@ -48,7 +48,7 @@ def is_command_dangerous(command: str) -> bool:
 
 # ── Action Logger ────────────────────────────────────────────────────────────
 
-LOG_DIR = Path(os.getenv("JARVIS_LOG_DIR", "./logs"))
+LOG_DIR = Path(os.getenv("JARVIS_LOG_DIR", "./data/logs"))
 
 
 class ActionLogger:

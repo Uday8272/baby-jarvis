@@ -2,8 +2,10 @@
 __pycache__/
 *.pyc
 .env
-logs/
-screenshots/
 .cursor/
-.env.example/ 
+.env.example/
 
+# Runtime data
+data/chroma_db/
+data/logs/
+data/screenshots/

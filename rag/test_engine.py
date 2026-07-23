@@ -1,7 +1,7 @@
 
 ## testing the rag engine before implementing it into the main workflow 
 
-from rag_engine import load_and_chunk_docs, create_or_update_vector_store, ask_jarvis_local_files
+from rag.engine import load_and_chunk_docs, create_or_update_vector_store, ask_jarvis_local_files
 
 # --- Note: Import your actual LLM here ---
 # Example using a fake LLM or replace with your Jarvis LLM setup

@@ -1,4 +1,4 @@
-from app.models import Message
+from backend.models import Message
 
 
 def build_prompt_with_memory(user_text: str, recent_messages: list[Message]) -> str:

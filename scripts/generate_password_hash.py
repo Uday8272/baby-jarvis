@@ -1,6 +1,6 @@
 import getpass
 
-from app.security import hash_password
+from backend.security import hash_password
 
 
 def main() -> None:

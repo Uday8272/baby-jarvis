@@ -32,7 +32,13 @@ Set:
 ## 4) Run the server
 
 ```powershell
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+python run.py
+```
+
+Or directly:
+
+```powershell
+uvicorn agent.server:app --host 127.0.0.1 --port 8000
 ```
 
 ## 5) Get token and call the protected entry point
@@ -71,7 +77,7 @@ curl.exe -X POST "http://127.0.0.1:8000/chat" `
 
 ## Async LLM Service (abstracted)
 
-The codebase includes an async provider-agnostic LLM layer in `app/services/llm.py`.
+The codebase includes an async provider-agnostic LLM layer in `backend/services/llm.py`.
 
 - `AsyncLLMService` defines the interface.
 - Implementations included: `GeminiService`, `OpenAIService`, `AnthropicService`, `GroqService`, `OllamaService`.
@@ -103,7 +109,7 @@ Conversation memory settings:
 
 ## Data Schema
 
-SQLModel entities are defined in `app/models/entities.py`:
+SQLModel entities are defined in `backend/models/entities.py`:
 - `User`
 - `ChatSession`
 - `Message`

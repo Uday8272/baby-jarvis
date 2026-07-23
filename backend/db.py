@@ -2,8 +2,8 @@ from collections.abc import Generator
 
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.config import get_settings
-from app.models import entities as _entities_models  # noqa: F401
+from backend.config import get_settings
+from backend.models import entities as _entities_models  # noqa: F401
 
 
 settings = get_settings()

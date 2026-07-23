@@ -34,6 +34,7 @@ from system_tools.window_mgmt import (
 )
 from system_tools.volume import set_volume, get_volume, toggle_mute
 from system_tools.rag_tool import search_local_files, ingest_local_folder
+from task_scheduler import SCHEDULER_TOOLS
 from system_tools.safety import ActionLogger
 
 # Convenient list of every tool for binding to the agent
@@ -81,4 +82,6 @@ ALL_TOOLS = [
     # RAG — Local Document Search
     search_local_files,
     ingest_local_folder,
+    # scheduler and routines 
+    *SCHEDULER_TOOLS, 
 ]

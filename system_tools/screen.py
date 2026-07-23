@@ -11,7 +11,7 @@ from langchain_core.tools import tool
 from system_tools.safety import logger
 
 
-SCREENSHOT_DIR = Path(os.getenv("JARVIS_SCREENSHOT_DIR", "./screenshots"))
+SCREENSHOT_DIR = Path(os.getenv("JARVIS_SCREENSHOT_DIR", "./data/screenshots"))
 
 
 @tool

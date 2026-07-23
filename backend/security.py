@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 
-from app.config import Settings, get_settings
+from backend.config import Settings, get_settings
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")

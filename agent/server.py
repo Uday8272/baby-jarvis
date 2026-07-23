@@ -1,4 +1,5 @@
 
+import task_scheduler
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -10,10 +11,17 @@ from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from agent import workflow  # import the new ReAct agent graph
+from agent.graph import workflow  # import the new ReAct agent graph
+
+from task_scheduler.engine import get_scheduler 
+from task_scheduler.jobs import set_agent_app 
+from task_scheduler.watcher import stop_all_watchers 
 
 # load env vars (GEMINI_API_KEY, DATABASE_URL, TAVILY_API_KEY, etc.)
 load_dotenv()
+
+# path to the frontend HTML file
+html_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "index.html")
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -73,14 +81,29 @@ async def lifespan(app: FastAPI):
     # compile the ReAct agent graph with memory
     agent_app = workflow.compile(checkpointer=checkpointer)
     print("[OK] Jarvis ReAct agent compiled.")
-    print("[OK] Tools: shell, files, apps, screen, keyboard, clipboard, sysinfo, windows, volume, web search, RAG (local docs)")
+    print("[OK] Tools: shell, files, apps, screen, keyboard, clipboard, sysinfo, windows, volume, web search, RAG (local docs)") 
+    task_scheduler = get_scheduler() 
+    task_scheduler.start() 
+    set_agent_app(agent_app) # give scheduled jobs access to the agent
+    print("[OK] jarvis scheduler started - task scheduling is active")
 
     yield  # ── app is running ──
 
     # shutdown: close the database connection if open
     if db_conn and not db_conn.closed:
         db_conn.close()
-        print("[SHUTDOWN] Postgres checkpointer connection closed.")
+        print("[SHUTDOWN] Postgres checkpointer connection closed.") 
+
+    # shutdown: stop the scheduler and file watchers 
+    try: 
+        task_scheduler = get_scheduler() 
+        task_scheduler.shutdown(wait=False) 
+        print("[shutdown] scheduler stopped") 
+    except Exception:
+        pass 
+
+    stop_all_watchers() 
+    print("[shutdown] file watchers stopped") 
 
 
 # ── FastAPI application ──────────────────────────────────────────────────────
@@ -169,5 +192,7 @@ async def get_action_log(limit: int = 50):
 @app.get("/", response_class=HTMLResponse)
 async def get_ui():
     """Serve the Jarvis frontend."""
-    with open("index.html", "r", encoding="utf-8") as f:
-        return f.read()
+    with open(html_path, "r", encoding="utf-8") as f:
+        return f.read() 
+
+        

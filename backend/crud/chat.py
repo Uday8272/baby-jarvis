@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from sqlmodel import Session, select
 
-from app.models import ChatSession, Message, User
+from backend.models import ChatSession, Message, User
 
 
 def get_or_create_user(session: Session, username: str) -> User:

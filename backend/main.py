@@ -6,8 +6,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from app.config import Settings, get_settings
-from app.crud.chat import (
+from backend.config import Settings, get_settings
+from backend.crud.chat import (
     create_message,
     get_or_create_chat_session,
     get_or_create_user,
@@ -16,10 +16,10 @@ from app.crud.chat import (
     list_user_chat_sessions,
     touch_session,
 )
-from app.db import engine, get_session, init_db
-from app.security import authenticate_owner, create_access_token, get_current_owner
-from app.services.conversation import build_prompt_with_memory
-from app.services.llm import AsyncLLMService, LLMGenerationRequest, get_llm_service
+from backend.db import engine, get_session, init_db
+from backend.security import authenticate_owner, create_access_token, get_current_owner
+from backend.services.conversation import build_prompt_with_memory
+from backend.services.llm import AsyncLLMService, LLMGenerationRequest, get_llm_service
 
 
 app = FastAPI(

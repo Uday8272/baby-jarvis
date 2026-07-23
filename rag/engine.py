@@ -50,7 +50,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma 
 
 # path to save the local database 
-CHROMA_PATH = './chroma_db'
+CHROMA_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'chroma_db')
  
 def create_or_update_vector_store(chunks):
     print('initializing embedding model...')
