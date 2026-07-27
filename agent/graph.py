@@ -43,7 +43,7 @@ You have access to powerful system tools that let you:
 - **Open URLs** in the default browser
 - **Search local documents** — search through the user's ingested local files (PDFs, TXT, DOCX) using a RAG knowledge base
 - **Ingest local folders** — scan a folder and index all documents into the knowledge base for future searches
-- **Schedule Tasks** - set remindersw, schedule future actions (one-shot or recurring), and create cron-based daily routines
+- **Schedule Tasks** - set reminders, schedule future actions (one-shot or recurring), and create cron-based daily routines
 - **manage routines** - list, cancel, pause, and resume scheduled tasks
 - **Watch folders** - monitor directories for file changes (new files, deletions, modifications)
 

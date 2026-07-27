@@ -7,12 +7,13 @@ task description as a message to the agent so Jarvis can reason about
 what to do and use his tools.
 """
 
-from langchain_core.messages import content
-from pydantic import config
+
 import asyncio 
 import uuid 
 
 from langchain_core.messages import HumanMessage 
+import re 
+import pyttsx3 
 
 # reference to the compiled agent 
 # this is set by server.py during startup (after the agent is compiled). 
@@ -27,6 +28,21 @@ def set_agent_app(app):
 
     global _agent_app 
     _agent_app = app 
+
+def speak_response(text: str):
+    """Strips markdown and speaks the text out loud."""
+    # Clean up markdown (bold, italics, code blocks) so it sounds natural
+    clean_text = re.sub(r'(\*\*|__)(.*?)\1', r'\2', text)
+    clean_text = re.sub(r'(\*|_)(.*?)\1', r'\2', text)
+    clean_text = re.sub(r'`{1,3}(.*?)`{1,3}', r'\1', clean_text)
+    clean_text = clean_text.replace('\n', ' ').strip()
+    
+    try:
+        engine = pyttsx3.init()
+        engine.say(clean_text)
+        engine.runAndWait()
+    except Exception as e:
+        print(f"[SCHEDULER] Failed to speak: {e}")
 
 async def execute_scheduled_task(task_description: str) -> None: 
 
@@ -59,7 +75,7 @@ async def execute_scheduled_task(task_description: str) -> None:
 
     try: 
         result = _agent_app.invoke(
-            {"message": [HumanMessage(content=prompt)]}, 
+            {"messages": [HumanMessage(content=prompt)]}, 
             config=config, 
         ) 
 
@@ -75,6 +91,7 @@ async def execute_scheduled_task(task_description: str) -> None:
             ).strip() 
 
         print(f"[SCHEDULER] task completed. jarvis response: {response[:200]}")
+        speak_response(response)
 
     except Exception as e:
         print(f"[SCHEDULER] task failed: {e}") 

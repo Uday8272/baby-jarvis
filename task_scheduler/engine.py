@@ -95,7 +95,7 @@ def add_one_shot_task(
     scheduler = get_scheduler()
 
     # import here to avoid circular imports
-    from scheduler.jobs import execute_scheduled_task
+    from task_scheduler.jobs import execute_scheduled_task
 
     scheduler.add_job(
         execute_scheduled_task,
@@ -128,7 +128,7 @@ def add_interval_task(
         Confirmation string.
     """
     scheduler = get_scheduler()
-    from scheduler.jobs import execute_scheduled_task
+    from task_scheduler.jobs import execute_scheduled_task
 
     scheduler.add_job(
         execute_scheduled_task,
@@ -171,7 +171,7 @@ def add_cron_task(
         Confirmation string.
     """
     scheduler = get_scheduler()
-    from scheduler.jobs import execute_scheduled_task
+    from task_scheduler.jobs import execute_scheduled_task
 
     # parse cron expression: "minute hour day month day_of_week"
     parts = cron_expression.strip().split()

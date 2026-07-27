@@ -58,7 +58,7 @@ def schedule_task(task_description: str, delay_minutes: int = 0, repeat_every_mi
         if delay_minutes <= 0:
             return "Error: For a one-shot task, delay_minutes must be greater than 0."
 
-        run_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
+        run_at = datetime.now() + timedelta(minutes=delay_minutes)
         result = add_one_shot_task(
             job_id=job_id,
             run_at=run_at,
