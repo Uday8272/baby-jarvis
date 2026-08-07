@@ -16,13 +16,11 @@ from typing import TypedDict, Annotated, Literal
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_ollama import ChatOllama
 from langchain_core.messages import SystemMessage
 from langchain_tavily import TavilySearch
 
-from system_tools import ALL_TOOLS
-
-load_dotenv()
+from agent.tools import ALL_TOOLS
 
 # ── System Prompt ────────────────────────────────────────────────────────────
 
@@ -40,6 +38,8 @@ You have access to powerful system tools that let you:
 - **Manage windows** — list, focus, minimize, maximize, close windows
 - **Control volume** — set level, mute/unmute
 - **Search the web** — find up-to-date information online
+- **Scrape web pages** — extract and read the full text content of any web page URL
+- **Render dynamic pages** — use a headless browser to scrape JavaScript-heavy sites (React, SPAs, etc.)
 - **Open URLs** in the default browser
 - **Search local documents** — search through the user's ingested local files (PDFs, TXT, DOCX) using a RAG knowledge base
 - **Ingest local folders** — scan a folder and index all documents into the knowledge base for future searches
@@ -54,9 +54,12 @@ You have access to powerful system tools that let you:
 4. **Be safe**: Never run commands that could damage the system (formatting drives, deleting system files, modifying boot config). These are blocked automatically.
 5. **Chain actions**: You can use multiple tools in sequence to accomplish complex tasks. For example, to "find all Python files and count lines", search_files → read_file → report.
 6. **Local knowledge first**: When the user asks about their personal documents, notes, or local files, use `search_local_files` BEFORE searching the web. If the knowledge base is empty, suggest ingesting a folder first.
-7. **Personality**: You are confident, concise, and a bit witty — like a real AI assistant. You're Jarvis, not a generic chatbot.
 
-8. **smart scheduling**: when the user asks to schedule something, use schedule_task for simple delays/intervals and schedule_cron_task for calender-based schedules. always confirm the schedule with the user. 
+7. **Web content**: When the user asks you to read or summarize a specific URL, use `scrape_webpage` first. If the result is empty or incomplete, fall back to `scrape_dynamic_page`. Only use web search (Tavily) when the user doesn't provide a specific URL.
+
+8. **Personality**: You are confident, concise, and a bit witty — like a real AI assistant. You're Jarvis, not a generic chatbot.
+
+9. **smart scheduling**: when the user asks to schedule something, use schedule_task for simple delays/intervals and schedule_cron_task for calender-based schedules. always confirm the schedule with the user. 
 
 ## Safety Notes
 - Some dangerous commands are automatically blocked for safety.
@@ -93,8 +96,8 @@ def build_agent_graph() -> StateGraph:
     all_tools = [web_search] + ALL_TOOLS
 
     # Initialize the brain with tools bound
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
+    llm = ChatOllama(
+        model="qwen2.5",
         temperature=0,
     ).bind_tools(all_tools)
 

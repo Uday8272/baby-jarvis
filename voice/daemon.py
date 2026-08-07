@@ -2,12 +2,13 @@ import os
 import re
 import uuid
 import time
+import json
+import zipfile
+import urllib.request
 import requests
-import pyttsx3
-import speech_recognition as sr
-import sounddevice as sd
-import scipy.io.wavfile as wav
-import tempfile
+import queue
+import sys
+import subprocess
 
 # Configuration
 SERVER_URL = "http://127.0.0.1:8000/api/chat"
@@ -28,20 +29,23 @@ def strip_markdown(text):
     return text.strip()
 
 def init_tts():
-    engine = pyttsx3.init()
-    voices = engine.getProperty('voices')
-    for voice in voices:
-        if 'Zira' in voice.name or 'David' in voice.name or 'English' in voice.name:
-            engine.setProperty('voice', voice.id)
-            break
-    engine.setProperty('rate', 170)
-    return engine
+    # No initialization needed for PowerShell TTS
+    return None
 
 def speak(engine, text):
     clean_text = strip_markdown(text)
     print(f"[JARVIS SPEAKS]: {clean_text}")
-    engine.say(clean_text)
-    engine.runAndWait()
+    # Escape single quotes and double quotes to prevent PowerShell syntax errors
+    ps_text = clean_text.replace("'", "''").replace('"', '\"')
+    
+    ps_cmd = (
+        'Add-Type -AssemblyName System.Speech; '
+        '$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; '
+        '$synth.Rate = 2; '
+        f'$synth.Speak(\'{ps_text}\')'
+    )
+    # Run synchronously so it waits until speech is finished
+    subprocess.run(["powershell", "-Command", ps_cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def process_command(command, engine):
     print(f"\n[DAEMON] Sending command to server: '{command}'")
@@ -60,70 +64,106 @@ def process_command(command, engine):
     except Exception as e:
         print(f"[ERROR] {e}")
         speak(engine, "I encountered an error processing your request.")
+        
+def clear_queue(q):
+    """Empty the audio queue so Jarvis doesn't hear his own echo"""
+    with q.mutex:
+        q.queue.clear()
 
-def record_audio(duration):
-    """Record audio using sounddevice to bypass PyAudio build errors on Windows."""
-    print("[DAEMON] Listening...")
-    recording = sd.rec(int(duration * FS), samplerate=FS, channels=1, dtype='int16')
-    sd.wait()
-    return recording
+def download_model_if_missing():
+    model_dir = os.path.join(os.path.dirname(__file__), "..", "data", "models")
+    os.makedirs(model_dir, exist_ok=True)
+    model_path = os.path.join(model_dir, "vosk-model-small-en-us-0.15")
+    
+    if not os.path.exists(model_path):
+        print("[DAEMON] Downloading Vosk model (40MB)... This will only happen once.")
+        zip_path = os.path.join(model_dir, "model.zip")
+        url = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
+        urllib.request.urlretrieve(url, zip_path)
+        print("[DAEMON] Extracting model...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(model_dir)
+        os.remove(zip_path)
+        print("[DAEMON] Model ready!")
+    return model_path
 
 def listen_loop():
-    recognizer = sr.Recognizer()
-    engine = init_tts()
-    temp_wav = os.path.join(tempfile.gettempdir(), "jarvis_temp.wav")
+    model_path = download_model_if_missing()
     
+    from vosk import Model, KaldiRecognizer
+    import sounddevice as sd
+    
+    model = Model(model_path)
+    recognizer = KaldiRecognizer(model, FS)
+    
+    engine = init_tts()
+    
+    q = queue.Queue()
+
+    def callback(indata, frames, time, status):
+        """This is called for each audio block by sounddevice"""
+        if status:
+            print(status, file=sys.stderr)
+        q.put(bytes(indata))
+        
     print("[DAEMON] Ready! Listening for wake word: 'Jarvis'")
     speak(engine, "Jarvis daemon is online and listening in the background.")
 
-    while True:
-        try:
-            # Record 5 seconds of audio
-            recording = record_audio(5)
-            wav.write(temp_wav, FS, recording)
-
-            # Transcribe audio using Google's free API
-            with sr.AudioFile(temp_wav) as source:
-                audio_data = recognizer.record(source)
-            
+    with sd.RawInputStream(samplerate=FS, blocksize=8000, device=None, dtype='int16',
+                           channels=1, callback=callback):
+        waiting_for_followup = False
+        while True:
             try:
-                text = recognizer.recognize_google(audio_data).lower()
-                print(f"[DAEMON] Heard: '{text}'")
-
-                if WAKE_WORD in text:
-                    parts = text.split(WAKE_WORD, 1)
-                    command = parts[1].strip()
+                data = q.get()
+                if recognizer.AcceptWaveform(data):
+                    print("") # New line after partials
+                    res = json.loads(recognizer.Result())
+                    text = res.get("text", "")
                     
-                    if command:
-                        process_command(command, engine)
-                    else:
-                        speak(engine, "Yes, sir?")
-                        # Wait for next command immediately
-                        follow_up_recording = record_audio(5)
-                        wav.write(temp_wav, FS, follow_up_recording)
-                        with sr.AudioFile(temp_wav) as fsource:
-                            f_audio_data = recognizer.record(fsource)
-                        try:
-                            follow_up = recognizer.recognize_google(f_audio_data).lower()
-                            print(f"[DAEMON] Follow up: '{follow_up}'")
-                            if follow_up:
-                                process_command(follow_up, engine)
-                        except sr.UnknownValueError:
-                            speak(engine, "I didn't catch that.")
-            except sr.UnknownValueError:
-                # Speech was unintelligible or silence
-                pass
-
-        except sr.RequestError as e:
-            print(f"[ERROR] Could not request results from Speech Recognition service; {e}")
-            time.sleep(5)
-        except KeyboardInterrupt:
-            print("\n[DAEMON] Shutting down.")
-            speak(engine, "Shutting down the voice daemon.")
-            break
-        except Exception as e:
-            print(f"[ERROR] Unexpected error: {e}")
-            time.sleep(1)
+                    if not text:
+                        continue
+                        
+                    print(f"[DAEMON] Heard: '{text}'")
+                    
+                    if waiting_for_followup:
+                        if text:
+                            process_command(text, engine)
+                        waiting_for_followup = False
+                        continue
+                        
+                    # Some Vosk models might transcribe it as travis, garbage, etc, but we look for jarvis
+                    if "jarvis" in text or "travis" in text or "darvis" in text:
+                        # Extract the command after the wake word
+                        if "jarvis" in text:
+                            parts = text.split("jarvis", 1)
+                        elif "travis" in text:
+                            parts = text.split("travis", 1)
+                        else:
+                            parts = text.split("darvis", 1)
+                            
+                        command = parts[1].strip()
+                        
+                        if command:
+                            process_command(command, engine)
+                            clear_queue(q)
+                        else:
+                            speak(engine, "Yes, sir?")
+                            waiting_for_followup = True
+                            clear_queue(q)
+                else:
+                    # Print partial results so the user can see it's listening
+                    partial_res = json.loads(recognizer.PartialResult())
+                    partial_text = partial_res.get("partial", "")
+                    if partial_text:
+                        print(f"\r[DAEMON] Hearing: {partial_text}", end="", flush=True)
+                            
+            except KeyboardInterrupt:
+                print("\n[DAEMON] Shutting down.")
+                speak(engine, "Shutting down the voice daemon.")
+                break
+            except Exception as e:
+                print(f"[ERROR] Unexpected error: {e}")
+                time.sleep(1)
 
 if __name__ == "__main__":
     listen_loop()

@@ -1,237 +1,273 @@
-# JARVIS Project Documentation
+# JARVIS — Technical Documentation
 
-Welcome to the JARVIS project documentation. This document serves as a comprehensive guide to understanding the architecture, features, and setup of the JARVIS project. 
-
-As the project evolves, this document will be updated to reflect the latest changes and additions.
+> **Living Document** — Updated as the project evolves. Last updated: August 2026.
 
 ---
 
 ## 1. Project Overview
 
-The JARVIS project is divided into these major components:
-1. **Backend API (`backend/`)**: A secure, single-owner FastAPI backend that handles JWT authentication, conversation memory with SQLModel, and multi-provider LLM integration.
-2. **Jarvis ReAct Agent (`agent/`)**: A LangGraph-powered ReAct agent with full PC system control — shell commands, file management, app launching, screenshots, keyboard/mouse, clipboard, system monitoring, window management, volume control, and web search. All through natural language.
-3. **System Tools (`system_tools/`)**: A modular Python package of LangChain-compatible tools that give Jarvis the ability to interact with every aspect of the Windows operating system.
-4. **Voice / Daemon (`voice/`)**: 24/7 voice-activated background daemon with wake-word detection and TTS responses.
-5. **RAG Engine (`rag/`)**: Local document search and indexing using ChromaDB and HuggingFace embeddings.
-6. **Frontend (`frontend/`)**: Premium dark-mode chat web interface.
-7. **Legacy Pipeline (`legacy/`)**: The original multi-agent research pipeline preserved for backward compatibility.
+JARVIS is a personal AI assistant with full control over a Windows PC. It is built as a local, self-hosted web application that you interact with through a browser-based chat UI. At its core, it uses Google Gemini (via LangGraph's ReAct agent loop) to understand natural language commands and execute them autonomously using a rich library of system tools.
+
+**Key design principles:**
+- **Local-first**: Runs entirely on your own machine. No data leaves unless you use a cloud model API.
+- **Agent-based**: The LLM is not just a chatbot — it is a ReAct agent that reasons, decides which tool to use, executes it, and reflects on the result in a loop until the task is complete.
+- **Persistent memory**: Conversations are saved to a Postgres (Supabase) database, so Jarvis remembers what you talked about across restarts.
+- **Extensible**: New capabilities (tools, schedulers, watchers) are plug-and-play.
 
 ---
 
-## 2. Project Structure
+## 2. High-Level Architecture
+
+```
+Browser (frontend/)
+    |
+    |  HTTP (JWT-authenticated)
+    v
+backend/main.py  <-- FastAPI application (single server)
+    |
+    |-- /auth/token       -> JWT login
+    |-- /chat             -> Authenticated chat (with SQL history)
+    |-- /api/chat         -> Unauthenticated alias (for local UI)
+    |-- /api/actions/log  -> View Jarvis action log
+    +-- /ui               -> Serves the frontend HTML
+    |
+    v
+agent/graph.py  <-- LangGraph ReAct Agent
+    |
+    |-- agent/tools/      -> System tools (shell, files, apps, etc.)
+    +-- agent/scheduler/  -> Task scheduler & folder watcher tools
+    |
+    v
+backend/config.py  <-- Centralized environment config (.env)
+    |
+    |-- Supabase Postgres  -> Persistent conversation checkpointing
+    +-- SQLite (fallback)  -> In-memory or local DB
+```
+
+---
+
+## 3. Directory Structure
 
 ```
 jarvis/
-├── backend/                  ← Core API (auth, chat, LLM service)
-│   ├── config.py, db.py, security.py, main.py
-│   ├── crud/chat.py
-│   ├── models/entities.py
-│   └── services/llm.py, conversation.py
-├── agent/                    ← ReAct Agent + Server
-│   ├── graph.py              ← Agent graph definition
-│   └── server.py             ← FastAPI server (serves agent + UI)
-├── system_tools/             ← System control tools
-├── voice/                    ← Voice daemon
-│   ├── daemon.py
-│   └── start_daemon.bat
-├── rag/                      ← RAG / Document search engine
-│   ├── engine.py
-│   └── test_engine.py
-├── legacy/                   ← Legacy research pipeline
-│   └── pipeline.py
-├── frontend/                 ← Web UI
-│   └── index.html
-├── data/                     ← Runtime data (gitignored)
-│   ├── chroma_db/
-│   ├── logs/
-│   └── screenshots/
-├── scripts/                  ← Utility scripts
-├── run.py                    ← Entry point
-└── .env / .env.example
+|
+|-- run.py                   # App entrypoint -- runs uvicorn
+|
+|-- frontend/                # Web UI
+|   |-- index.html           # HTML structure
+|   |-- style.css            # All CSS styles
+|   +-- app.js               # All JavaScript (auth, chat, voice)
+|
+|-- backend/                 # FastAPI server & auth
+|   |-- main.py              # * Single server entrypoint, all API routes
+|   |-- config.py            # * Centralized .env config (get_settings())
+|   |-- security.py          # JWT token creation & validation
+|   |-- db.py                # SQLModel database engine setup
+|   |-- crud/                # DB operations (users, sessions, messages)
+|   |-- models/              # SQLModel table definitions
+|   +-- services/            # LLM service (legacy, bypassed by agent)
+|
+|-- agent/                   # AI Agent core
+|   |-- graph.py             # * LangGraph ReAct agent definition & system prompt
+|   |-- tools/               # All system tools (LangChain @tool functions)
+|   |   |-- __init__.py      # Exports ALL_TOOLS list
+|   |   |-- shell.py         # Run shell & PowerShell commands
+|   |   |-- file_ops.py      # Read, write, move, delete files
+|   |   |-- app_launcher.py  # Open/close apps, open URLs
+|   |   |-- screen.py        # Take screenshots
+|   |   |-- keyboard_mouse.py# Type text, hotkeys, mouse control
+|   |   |-- clipboard.py     # Get/set clipboard
+|   |   |-- system_info.py   # CPU, RAM, processes, network
+|   |   |-- window_mgmt.py   # List, focus, minimize, maximize windows
+|   |   |-- volume.py        # Control system volume
+|   |   |-- web_scraper.py   # Read and extract content from websites (static & dynamic)
+|   |   |-- rag_tool.py      # Search & ingest local documents (RAG)
+|   |   +-- safety.py        # Action logger (audit trail)
+|   +-- scheduler/           # Background task scheduling
+|       |-- __init__.py      # Exports SCHEDULER_TOOLS list
+|       |-- engine.py        # APScheduler wrapper (SQLite persistence)
+|       |-- tools.py         # LangChain tools for scheduling
+|       |-- jobs.py          # Job execution bridge -> invokes agent
+|       +-- watcher.py       # Watchdog folder monitoring
+|
+|-- voice/                   # Voice daemon (background listener)
+|   +-- daemon.py            # Vosk-powered offline wake-word detector ("Jarvis")
+|-- rag/                     # RAG (document ingestion) utilities
+|-- data/                    # Runtime data (logs, screenshots, scheduler DB)
++-- .env                     # * All secret keys and configuration
 ```
 
 ---
 
-## 3. Backend API (`backend/`)
+## 4. Component Deep Dives
 
-The Backend API is a FastAPI-based backend that exposes authenticated chat endpoints. It uses an abstracted layer for LLM integrations, allowing swapping between models like Gemini, OpenAI, Anthropic, Groq, and Ollama.
+### 4.1 `run.py` — Entrypoint
+Starts the uvicorn server pointing at `backend.main:app`. Sets the Windows event loop policy for compatibility with async libraries.
 
-### 3.1 Architecture
-* **Framework**: FastAPI
-* **Database**: SQLite (default) / PostgreSQL (Supabase ready). Models are built using SQLModel.
-* **Authentication**: OAuth2 Password Flow with JWT (JSON Web Tokens). Only a single "owner" can access the system.
-* **LLM Layer**: Protocol-based abstraction (`backend/services/llm.py`).
+### 4.2 `backend/main.py` — The Single Server
+This is the heart of the application. It was created by merging the original `agent/server.py` and `backend/main.py` into one file.
 
-### 3.2 Core Files and Directories
-* `backend/main.py`: The entry point for the FastAPI server, defining all routes (`/chat`, `/auth/token`, etc.).
-* `backend/config.py`: Environment configuration management using `dataclasses`. Reads from `.env`.
-* `backend/db.py`: Database connection and session management.
-* `backend/security.py`: JWT token creation, password hashing, and owner authentication logic.
-* `backend/models/entities.py`: SQLModel table definitions (`User`, `ChatSession`, `Message`).
-* `backend/crud/chat.py`: Database operations (Create, Read, Update) for chat memory.
-* `backend/services/llm.py`: Provider-agnostic LLM interface and Gemini implementation.
-* `backend/services/conversation.py`: Helper functions to construct prompts using chat history.
+**Startup (lifespan):**
+1. Initialises the SQL database (`init_db()`).
+2. Attempts a Postgres connection via `DATABASE_URL`. Falls back to `MemorySaver` if unavailable.
+3. Compiles the LangGraph agent with the checkpointer.
+4. Starts the APScheduler background task scheduler.
+5. Starts Watchdog folder watchers.
 
-### 3.3 Setup and Running
+**Key endpoints:**
 
-1. **Environment Setup**:
-   Create a `.env` file (you can copy `.env.example`).
-   Required variables include:
-   - `JWT_SECRET_KEY`
-   - `JARVIS_OWNER_USERNAME`
-   - `JARVIS_OWNER_PASSWORD_HASH` (Generated using `scripts/generate_password_hash.py`)
-   - `LLM_PROVIDER` (e.g., `gemini`)
-   - `GEMINI_API_KEY` (or other provider keys)
-
-2. **Start the API**:
-   ```bash
-   uvicorn backend.main:app --host 127.0.0.1 --port 8000
-   ```
-
-3. **Usage**:
-   - Get a token by sending a POST request to `/auth/token` with your username and password.
-   - Use the token as a Bearer token to access `/chat`, `/chat/sessions`, and `/chat/sessions/{session_id}/messages`.
-
----
-
-## 4. Jarvis ReAct Agent (`agent/`)
-
-The ReAct Agent is the primary Jarvis interface — a flexible, tool-calling AI that can control your entire PC through natural language.
-
-### 4.1 Architecture (LangGraph ReAct)
-
-Unlike the old fixed pipeline, the ReAct agent uses a **flexible tool-calling loop**:
-
-```
-User Message → LLM (Gemini 2.5 Flash + all tools) → Tool Call?
-    → YES: Execute tool → Feed result back → Loop
-    → NO: Return final response
-```
-
-* **Model**: Gemini 2.5 Flash with function calling
-* **State Persistence**: PostgresSaver backed by Supabase Postgres
-* **Tool Binding**: All system tools + Tavily web search are bound as LangChain tools
-
-### 4.2 System Tools (`system_tools/`)
-
-| Module | Tools | Description |
+| Endpoint | Auth | Description |
 |---|---|---|
-| `shell.py` | `run_shell_command`, `run_powershell` | Execute CMD/PowerShell commands |
-| `file_ops.py` | `read_file`, `write_file`, `list_directory`, `move_path`, `delete_path`, `search_files`, `get_file_info` | Full file system control |
-| `app_launcher.py` | `open_application`, `open_url`, `close_application` | Launch/close apps, open URLs |
-| `screen.py` | `take_screenshot` | Capture screen to PNG |
-| `keyboard_mouse.py` | `type_text`, `press_hotkey`, `click_at`, `move_mouse` | Keyboard & mouse automation |
-| `clipboard.py` | `get_clipboard`, `set_clipboard` | Clipboard read/write |
-| `system_info.py` | `get_system_stats`, `list_processes`, `get_network_info`, `kill_process` | System monitoring |
-| `window_mgmt.py` | `list_windows`, `focus_window`, `minimize_window`, `maximize_window`, `close_window` | Window management |
-| `volume.py` | `get_volume`, `set_volume`, `toggle_mute` | Volume control |
-| `safety.py` | `ActionLogger`, blocklist, danger detection | Safety & audit layer |
+| `POST /auth/token` | None | OAuth2 login. Returns a JWT. |
+| `GET /auth/whoami` | JWT | Returns the logged-in username. |
+| `POST /chat` | JWT | Main authenticated chat with SQL history tracking. |
+| `POST /api/chat` | None | Unauthenticated alias used by the local web UI. |
+| `GET /api/actions/log` | None | Returns Jarvis's recent action log. |
+| `GET /ui` | None | Serves `frontend/index.html`. |
+| `GET /frontend/*` | None | Serves static CSS/JS files. |
 
-### 4.3 Safety Features
+### 4.3 `backend/config.py` — Centralized Configuration
+All environment variables are read **once** here via `get_settings()` which returns a frozen `Settings` dataclass. Every other module imports from here instead of calling `os.getenv()` directly.
 
-* **Command Blocklist**: Dangerous commands (format drives, delete system files, modify boot config, diskpart) are **automatically refused**.
-* **Action Logger**: Every single tool call is logged to `data/logs/actions_YYYY-MM-DD.jsonl` with timestamp, tool name, arguments, result, and status.
-* **Danger Detection**: Commands matching destructive patterns (delete, kill, registry) are flagged.
+**Required `.env` variables:**
+```
+JWT_SECRET_KEY               # Long random hex string (secrets.token_hex(32))
+JARVIS_OWNER_USERNAME        # Your login username
+JARVIS_OWNER_PASSWORD_HASH   # bcrypt hash of your password
+GEMINI_API_KEY               # Your Google Gemini API key
+DATABASE_URL                 # PostgreSQL connection string (Supabase)
+TAVILY_API_KEY               # For web search tool
+```
 
-### 4.4 Core Files
+### 4.4 `agent/graph.py` — The ReAct Agent
+Defines the LangGraph `StateGraph` with a `MessagesState`. The agent node uses `ChatGoogleGenerativeAI` (Gemini) bound to all tools in `ALL_TOOLS`. It loops: **Reason -> Tool Call -> Observe -> Reason** until it produces a final answer.
 
-* `agent/graph.py`: Defines the ReAct agent graph — LLM node, tool node, conditional routing, system prompt.
-* `agent/server.py`: FastAPI application that compiles the agent with Postgres checkpointer, serves endpoints and UI.
-* `frontend/index.html`: Premium dark-mode chat interface with quick actions, thinking indicators, and markdown rendering.
-* `system_tools/`: All tool modules (see table above).
+The **System Prompt** lives here. It tells Jarvis who it is, what tools it has, and how to behave (e.g., prefer PowerShell, be decisive, always speak in first person).
 
-### 4.5 Setup and Running
+### 4.5 `agent/tools/` — System Control Tools
+Each file exposes one or more LangChain `@tool`-decorated functions. They are all imported and assembled into the `ALL_TOOLS` list in `__init__.py`, which is then bound to the agent.
 
-1. **Environment Setup**:
-   Ensure your `.env` contains:
-   - `DATABASE_URL` (Supabase connection string for the checkpointer memory)
-   - `TAVILY_API_KEY` (For web search)
-   - `GEMINI_API_KEY` (For the LangChain Google Generative AI integration)
-   - `JARVIS_LOG_DIR` (Optional, default: `./data/logs`)
-   - `JARVIS_SCREENSHOT_DIR` (Optional, default: `./data/screenshots`)
+**Action Logger** (`safety.py`): Every sensitive action is automatically logged to `data/logs/` with a timestamp. Viewable via `/api/actions/log`.
 
-2. **Install Dependencies**:
-   ```bash
-   pip install pyautogui pillow psutil pyperclip pycaw comtypes pywin32
-   ```
+### 4.6 `agent/scheduler/` — Background Task Scheduling
+Built on top of **APScheduler** with SQLite persistence (`data/scheduler.db`), so scheduled jobs survive server restarts.
 
-3. **Start the Server**:
-   ```bash
-   python run.py
-   ```
-   Or:
-   ```bash
-   uvicorn agent.server:app --host 127.0.0.1 --port 8000
-   ```
+- **`engine.py`**: Singleton scheduler. Exposes `add_one_shot_task`, `add_cron_task`, `get_all_tasks`, `remove_task`.
+- **`tools.py`**: Wraps the engine functions as LangChain tools so the agent can schedule tasks in natural language.
+- **`jobs.py`**: When a job fires, it calls `execute_scheduled_task()`, which invokes the full LangGraph agent and speaks the response via TTS.
+- **`watcher.py`**: Uses **Watchdog** to monitor filesystem directories. When a change is detected, it invokes the agent to announce it.
 
-4. **Usage**:
-   Open `http://127.0.0.1:8000/` in your browser to interact with Jarvis.
+### 4.7 `frontend/` — Web UI
+A single-page app with no build step. Pure HTML/CSS/JS.
 
-5. **Standalone CLI** (no server needed):
-   ```bash
-   python -m agent.graph
-   ```
-   This runs Jarvis in your terminal with in-memory checkpointing.
-
-### 4.6 API Endpoints
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/` | GET | Serve the Jarvis web UI |
-| `/api/chat` | POST | Send a message to Jarvis (main endpoint) |
-| `/api/research` | POST | Backward-compatible alias for `/api/chat` |
-| `/api/actions/log` | GET | View Jarvis's action audit log |
+**Authentication flow:**
+1. On page load, `app.js` checks `localStorage` for a saved JWT (`jarvis_token`).
+2. If no token, the login overlay is shown (full-screen, above everything).
+3. On form submit, `fetch('/auth/token')` is called with `application/x-www-form-urlencoded` credentials.
+4. On success, the JWT is saved to `localStorage` and the overlay fades out.
+5. Every subsequent `/api/chat` call includes `Authorization: Bearer <token>`.
+6. If a `401` is received, the token is cleared and the login overlay is shown again.
 
 ---
 
-## 5. Voice Communication & 24/7 Daemon (`voice/`)
+## 5. Data Flow — A Single Chat Message
 
-Jarvis includes robust voice capabilities allowing for both web-based and standalone 24/7 background interaction.
-
-### 5.1 Web UI Voice Integration
-The Jarvis web interface (`frontend/index.html`) includes native **Speech-to-Text (STT)** and **Text-to-Speech (TTS)** using the browser's native Web Speech API.
-* **Microphone (STT)**: Click the 🎙️ icon in the input bar to speak commands. It automatically transcribes and sends the message when you stop speaking.
-* **Voice Output (TTS)**: Toggle the `🔊 Voice: OFF` button in the header to enable Jarvis to speak his responses out loud. Markdown is automatically stripped for a natural reading experience.
-
-### 5.2 24/7 Native Background Daemon (`voice/daemon.py`)
-For a true "always-on" experience, Jarvis has a standalone Python daemon that runs invisibly in the background of your OS, without needing a browser open.
-
-* **Architecture**: Uses `sounddevice` to continuously listen in 5-second chunks (bypassing PyAudio Windows build issues), transcribes via Google STT, and routes commands directly to the FastAPI backend (`agent/server.py`).
-* **Wake Word**: Continuously listens for the word **"Jarvis"**.
-* **TTS Response**: Speaks back through your system audio using Windows' native `pyttsx3` engine.
-* **Starting**: Simply run the `voice/start_daemon.bat` script provided, or: `python -m voice.daemon`
-
----
-
-## 6. RAG Engine (`rag/`)
-
-The RAG (Retrieval-Augmented Generation) engine provides local document search capabilities.
-
-* `rag/engine.py`: Handles document loading (PDF, TXT, DOCX), chunking, vector store creation with ChromaDB, and retrieval-augmented question answering.
-* `rag/test_engine.py`: Test suite for the RAG engine.
-* Vector database stored at `data/chroma_db/`.
-
----
-
-## 7. Legacy: Baby Jarvis Research Pipeline (`legacy/`)
-
-The original multi-agent research pipeline is preserved in `legacy/pipeline.py` for backward compatibility and standalone testing.
-
-### Architecture
-* **Intake Agent**: Analyzes query, creates search plan
-* **Researcher Agent**: Uses Tavily API for web search
-* **Verifier Agent**: Fact-checks with retry loop (max 3 attempts)
-* **Writer Agent**: Formats verified data into Markdown
-
-### Running Standalone
-```bash
-python -m legacy.pipeline
+```
+User types "Open Spotify" -> presses Enter
+    |
+    v
+app.js: sendMessage()
+    -> GET token from localStorage
+    -> POST /api/chat  { query: "Open Spotify", session_id: "abc123" }
+          Authorization: Bearer <jwt>
+    |
+    v
+backend/main.py: run_chat()
+    -> agent_app.invoke({ messages: [HumanMessage("Open Spotify")] })
+    |
+    v
+agent/graph.py: ReAct loop
+    -> Reason: "I should use open_application tool"
+    -> Tool call: open_application(name="Spotify")
+    |
+    v
+agent/tools/app_launcher.py: open_application()
+    -> subprocess.Popen(["start", "spotify"])
+    -> Returns "Opened Spotify"
+    |
+    v
+agent/graph.py: ReAct loop
+    -> Observe tool result
+    -> Reason: "Task complete"
+    -> Final response: "Spotify is now open!"
+    |
+    v
+backend/main.py: returns { result: "Spotify is now open!", session_id: "abc123" }
+    |
+    v
+app.js: addMessage('jarvis', "Spotify is now open!")
+    -> Renders in chat
+    -> speakText() -> Web Speech API reads it aloud
 ```
 
 ---
 
-## 8. Maintenance and Updates
+## 6. Development Guide
 
-> **Note to AI / Developers:**
-> Whenever new features, models, endpoints, or agents are added to the project, this `DOCUMENTATION.md` file MUST be updated to keep an accurate single source of truth for the project's state.
+### Running the server
+```powershell
+# Activate virtual environment
+.venv\Scripts\activate
+
+# Start Jarvis
+python run.py
+```
+Then open: `http://127.0.0.1:8000/ui`
+
+### Adding a new tool
+1. Create a new file in `agent/tools/` (e.g., `agent/tools/calendar.py`).
+2. Define a function decorated with `@tool`.
+3. Import it in `agent/tools/__init__.py` and add it to the `ALL_TOOLS` list.
+4. Update the system prompt in `agent/graph.py` to mention the new capability.
+
+### Adding a new API endpoint
+Add it to `backend/main.py`. If it needs authentication, add `_owner: str = Depends(get_current_owner)` as a parameter.
+
+---
+
+## 7. Key Dependencies
+
+| Package | Purpose |
+|---|---|
+| `fastapi` | Web framework & API server |
+| `uvicorn` | ASGI server |
+| `langchain` / `langgraph` | Agent framework & ReAct loop |
+| `langchain-google-genai` | Gemini model integration |
+| `langchain-tavily` | Web search tool |
+| `apscheduler` | Background task scheduling |
+| `watchdog` | Filesystem change monitoring |
+| `beautifulsoup4` / `httpx` | Static web scraping |
+| `playwright` | Dynamic web scraping (JavaScript rendering) |
+| `psycopg` | Postgres driver for conversation memory |
+| `sqlmodel` | SQL ORM for chat history database |
+| `python-jose` / `bcrypt` | JWT authentication & password hashing |
+| `pyttsx3` | Text-to-speech for scheduled task notifications & Voice Mode |
+| `vosk` / `sounddevice` | Offline background wake-word detection ("Hey Jarvis") |
+| `chromadb` | Vector store for RAG (local document search) |
+
+---
+
+## 8. Change Log
+
+| Date | Change | Phase |
+|---|---|---|
+| Early 2026 | Initial project -- basic FastAPI + raw LLM chat | Phase 1 |
+| July 2026 | Integrated LangGraph ReAct agent with system tools | Phase 5-9 |
+| July 22, 2026 | Added Task Scheduler (APScheduler + voice notifications) | Phase 10 |
+| July 28, 2026 | Pushed task scheduler to GitHub (refactor/organize-features) | Phase 10 |
+| July 30, 2026 | Architectural cleanup: merged servers, reorganized agent/tools/ & agent/scheduler/ | Phase 11 |
+| July 30, 2026 | Centralized all config in backend/config.py | Phase 11 |
+| August 7, 2026 | Added JWT login screen to frontend | Phase 12 |
+| August 7, 2026 | Split index.html into index.html + style.css + app.js | Phase 12 |
+| August 7, 2026 | Added Web Scraping tools (BeautifulSoup + Playwright) | Phase 13 |
+| August 8, 2026 | Added offline Voice Mode background daemon (Vosk) | Phase 14 |

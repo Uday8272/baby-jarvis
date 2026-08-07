@@ -1,7 +1,21 @@
 import httpx
 from uuid import uuid4
+import os
+from contextlib import asynccontextmanager
+from langchain_core.messages import HumanMessage
+from langgraph.checkpoint.memory import MemorySaver
+
+from agent.graph import workflow
+from agent.scheduler.engine import get_scheduler
+from agent.scheduler.jobs import set_agent_app
+from agent.scheduler.watcher import stop_all_watchers
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import HTMLResponse
+import subprocess
+import atexit
+import sys
+from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlmodel import Session
@@ -22,13 +36,85 @@ from backend.services.conversation import build_prompt_with_memory
 from backend.services.llm import AsyncLLMService, LLMGenerationRequest, get_llm_service
 
 
+# ── global handle for the compiled graph ─────────────────────────────────────
+agent_app = None   # set during lifespan startup
+db_conn = None     # keep a reference so we can close it on shutdown
+
+def _try_postgres_checkpointer():
+    settings = get_settings()
+    raw_url = settings.database_url
+    if not raw_url:
+        return None, None
+    db_uri = raw_url.replace("postgresql+psycopg://", "postgresql://")
+    try:
+        from psycopg import Connection
+        from langgraph.checkpoint.postgres import PostgresSaver
+        conn = Connection.connect(db_uri, autocommit=True, prepare_threshold=None)
+        checkpointer = PostgresSaver(conn)
+        checkpointer.setup()
+        return checkpointer, conn
+    except Exception as e:
+        print(f"[WARN] Postgres checkpointer unavailable: {e}")
+        return None, None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global agent_app, db_conn
+    voice_process = None
+
+    # original backend startup logic
+    init_db()
+    settings = get_settings()
+    with Session(engine) as session:
+        get_or_create_user(session, settings.owner_username)
+
+    # agent and scheduler startup logic
+    checkpointer, db_conn = _try_postgres_checkpointer()
+    if not checkpointer:
+        checkpointer = MemorySaver()
+    
+    agent_app = workflow.compile(checkpointer=checkpointer)
+    task_scheduler = get_scheduler()
+    task_scheduler.start()
+    set_agent_app(agent_app)
+
+    # Start Voice Daemon
+    voice_script = os.path.join(os.path.dirname(__file__), "..", "voice", "daemon.py")
+    python_exe = sys.executable
+    voice_process = subprocess.Popen([python_exe, voice_script])
+    
+    yield
+
+    if db_conn and not db_conn.closed:
+        db_conn.close()
+    
+    try:
+        task_scheduler = get_scheduler()
+        task_scheduler.shutdown(wait=False)
+    except Exception:
+        pass
+    stop_all_watchers()
+    
+    if voice_process:
+        voice_process.terminate()
+        try:
+            voice_process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            voice_process.kill()
+
+
 app = FastAPI(
     title="JARVIS API",
     version="1.0.0",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
+    lifespan=lifespan,
 )
+
+# Serve static frontend files (style.css, app.js, etc.)
+_frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
+app.mount("/frontend", StaticFiles(directory=_frontend_dir), name="frontend")
 
 
 class TokenResponse(BaseModel):
@@ -66,12 +152,7 @@ def llm_service_dependency(settings: Settings = Depends(get_settings)) -> AsyncL
     return get_llm_service(settings)
 
 
-@app.on_event("startup")
-def on_startup() -> None:
-    init_db()
-    settings = get_settings()
-    with Session(engine) as session:
-        get_or_create_user(session, settings.owner_username)
+
 
 
 @app.post("/auth/token", response_model=TokenResponse)
@@ -108,7 +189,6 @@ async def chat_with_jarvis(
     _owner: str = Depends(get_current_owner),
     settings: Settings = Depends(get_settings),
     session: Session = Depends(get_session),
-    llm_service: AsyncLLMService = Depends(llm_service_dependency),
 ) -> ChatResponse:
     if not payload.text.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required.")
@@ -118,28 +198,25 @@ async def chat_with_jarvis(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Owner user missing id.")
     session_id = payload.session_id.strip() if payload.session_id else uuid4().hex
     chat_session = get_or_create_chat_session(session, session_id, owner_user.id)
-    recent_messages = get_recent_messages(session, session_id, settings.memory_window_messages)
-    prompt = build_prompt_with_memory(payload.text, recent_messages)
+    
+    config = {"configurable": {"thread_id": session_id}}
+    input_state = {"messages": [HumanMessage(content=payload.text.strip())]}
 
     try:
-        generated_text = await llm_service.generate_text(
-            LLMGenerationRequest(
-                prompt=prompt,
-                temperature=payload.temperature,
-                max_output_tokens=payload.max_output_tokens,
-            )
-        )
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Upstream LLM returned an error: {exc.response.status_code}.",
-        ) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to reach configured LLM provider.",
-        ) from exc
-    except RuntimeError as exc:
+        result = agent_app.invoke(input_state, config=config)
+        
+        ai_message = result["messages"][-1]
+        raw_content = ai_message.content if hasattr(ai_message, "content") else ""
+
+        if isinstance(raw_content, list):
+            generated_text = " ".join(
+                block.get("text", "") if isinstance(block, dict) else str(block)
+                for block in raw_content
+            ).strip()
+        else:
+            generated_text = str(raw_content)
+            
+    except Exception as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
     create_message(session, session_id, "user", payload.text.strip())
@@ -190,3 +267,40 @@ def get_chat_session_messages(
         )
         for item in messages
     ]
+
+
+class QueryRequest(BaseModel):
+    query: str
+    session_id: str | None = None
+
+# Backward compatibility alias for the frontend UI before we build the login screen
+@app.post("/api/chat")
+async def run_chat(request: QueryRequest):
+    # This acts as an unauthenticated fallback for the existing local frontend UI
+    # It directly invokes the agent_app without tracking to SQL DB
+    session_id = request.session_id.strip() if request.session_id else uuid4().hex
+    config = {"configurable": {"thread_id": session_id}}
+    input_state = {"messages": [HumanMessage(content=request.query)]}
+    result = agent_app.invoke(input_state, config=config)
+    ai_message = result["messages"][-1]
+    raw_content = ai_message.content if hasattr(ai_message, "content") else ""
+    if isinstance(raw_content, list):
+        response_text = " ".join(block.get("text", "") if isinstance(block, dict) else str(block) for block in raw_content).strip()
+    else:
+        response_text = str(raw_content)
+    return {"result": response_text, "session_id": session_id}
+
+
+@app.get("/api/actions/log")
+async def get_action_log(limit: int = 50):
+    from agent.tools.safety import ActionLogger
+    log = ActionLogger()
+    entries = log.get_recent(n=limit)
+    return {"actions": entries, "count": len(entries)}
+
+
+@app.get("/ui", response_class=HTMLResponse)
+async def get_ui():
+    html_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "index.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        return f.read()

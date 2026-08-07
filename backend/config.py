@@ -33,6 +33,9 @@ class Settings:
     supabase_url: str
     supabase_anon_key: str
     supabase_service_role_key: str
+    jarvis_data_dir: str
+    jarvis_log_dir: str
+    jarvis_screenshot_dir: str
 
 
 def get_settings() -> Settings:
@@ -70,4 +73,7 @@ def get_settings() -> Settings:
         supabase_url=os.getenv("SUPABASE_URL", ""),
         supabase_anon_key=os.getenv("SUPABASE_ANON_KEY", ""),
         supabase_service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
+        jarvis_data_dir=os.getenv("JARVIS_DATA_DIR", "./data"),
+        jarvis_log_dir=os.getenv("JARVIS_LOG_DIR", "./data/logs"),
+        jarvis_screenshot_dir=os.getenv("JARVIS_SCREENSHOT_DIR", "./data/screenshots"),
     )

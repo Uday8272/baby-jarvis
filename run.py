@@ -11,13 +11,11 @@ import sys
 
 import uvicorn
 
+# Default ProactorEventLoop is fine and required for Playwright subprocesses
 if __name__ == "__main__":
-    # psycopg async requires SelectorEventLoop on Windows
-    if sys.platform == "win32":
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
     uvicorn.run(
-        "agent.server:app",
+        "backend.main:app",
         host="127.0.0.1",
         port=8000,
+        reload=False,
     )
